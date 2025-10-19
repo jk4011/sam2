@@ -13,9 +13,9 @@ scratch:
 
 dataset:
   # PATHS to Dataset
-  img_folder: null # PATH to MOSE JPEGImages folder
-  gt_folder: null  # PATH to MOSE Annotations folder
-  file_list_txt: training/assets/MOSE_sample_train_list.txt # Optional PATH to filelist containing a subset of videos to be used for training
+  img_folder: /root/data1/jinhyeok/MOSE/MOSE/MOSE_release/train/JPEGImages # PATH to MOSE JPEGImages folder
+  gt_folder: /root/data1/jinhyeok/MOSE/MOSE/MOSE_release/train/Annotations  # PATH to MOSE Annotations folder
+  file_list_txt: null # Optional PATH to filelist containing a subset of videos to be used for training
   multiplier: 2
 
 # Video transforms
