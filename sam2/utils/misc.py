@@ -168,6 +168,8 @@ class AsyncVideoFrameLoader:
     def __len__(self):
         return len(self.images)
 
+load_video_simple = lambda video_path: load_video_frames(video_path, 1024, False)
+
 
 def load_video_frames(
     video_path,
@@ -210,6 +212,77 @@ def load_video_frames(
         )
 
 
+def load_video_frames_from_file_list(
+    file_path_list,
+    image_size=1024,
+    offload_video_to_cpu=False,
+    img_mean=(0.485, 0.456, 0.406),
+    img_std=(0.229, 0.224, 0.225),
+    async_loading_frames=False,
+    compute_device=torch.device("cuda"),
+):
+    """
+    Load the video frames from a list of image file paths.
+
+    The frames are resized to image_size x image_size and are loaded to GPU if
+    `offload_video_to_cpu` is `False` and to CPU if `offload_video_to_cpu` is `True`.
+
+    You can load a frame asynchronously by setting `async_loading_frames` to `True`.
+    
+    Args:
+        file_path_list: List of image file paths to load
+        image_size: Size to resize images to
+        offload_video_to_cpu: Whether to keep frames on CPU
+        img_mean: Mean values for normalization
+        img_std: Std values for normalization
+        async_loading_frames: Whether to load frames asynchronously
+        compute_device: Device to load frames to
+    
+    Returns:
+        images: Tensor of loaded frames (or AsyncVideoFrameLoader if async)
+        video_height: Original height of first frame
+        video_width: Original width of first frame
+    """
+    if not isinstance(file_path_list, list):
+        raise TypeError("file_path_list must be a list of file paths")
+    
+    img_paths = file_path_list
+    num_frames = len(img_paths)
+    if num_frames == 0:
+        raise RuntimeError("file_path_list is empty")
+    
+    # Verify that all paths exist
+    for img_path in img_paths:
+        if not os.path.exists(img_path):
+            raise FileNotFoundError(f"Image file not found: {img_path}")
+    
+    img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
+    img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
+
+    if async_loading_frames:
+        lazy_images = AsyncVideoFrameLoader(
+            img_paths,
+            image_size,
+            offload_video_to_cpu,
+            img_mean,
+            img_std,
+            compute_device,
+        )
+        return lazy_images, lazy_images.video_height, lazy_images.video_width
+
+    images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
+    for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (from file list)")):
+        images[n], video_height, video_width = _load_img_as_tensor(img_path, image_size)
+    if not offload_video_to_cpu:
+        images = images.to(compute_device)
+        img_mean = img_mean.to(compute_device)
+        img_std = img_std.to(compute_device)
+    # normalize by mean and std
+    images -= img_mean
+    images /= img_std
+    return images, video_height, video_width
+
+
 def load_video_frames_from_jpg_images(
     video_path,
     image_size,
@@ -243,9 +316,12 @@ def load_video_frames_from_jpg_images(
     frame_names = [
         p
         for p in os.listdir(jpg_folder)
-        if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
+        if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG", ".png"]
     ]
-    frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
+    try:
+        frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
+    except:
+        frame_names.sort(key=lambda p: os.path.splitext(p)[0])
     num_frames = len(frame_names)
     if num_frames == 0:
         raise RuntimeError(f"no images found in {jpg_folder}")
